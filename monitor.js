@@ -1,4 +1,6 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs').promises;
 const path = require('path');
@@ -12,16 +14,8 @@ const PUPPETEER_CACHE_DIR = path.join(__dirname, '.puppeteer_cache');
 let lastPostId = null; // Хранит ID последнего отправленного поста
 let subscribers = []; // Список ID подписчиков
 
-// Список User-Agent для ротации
-const userAgents = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36'
-];
-
-// Инициализация Telegram-бота с Webhook
-const bot = new TelegramBot(TOKEN);
-bot.setWebHook(`http://145.223.100.36:3004/bot/${TOKEN}`);
+// Инициализация Telegram-бота с polling
+const bot = new TelegramBot(TOKEN, { polling: true });
 
 // Удаляем все HTML-теги из строки
 function stripHtmlTags(text) {
@@ -106,11 +100,12 @@ async function getPosts() {
         });
 
         const page = await browser.newPage();
-        const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
-        await page.setUserAgent(randomUserAgent);
-        console.log('Использую User-Agent:', randomUserAgent);
         console.log('Перехожу на Truth Social...');
         await page.goto('https://truthsocial.com', { waitUntil: 'networkidle2', timeout: 15000 });
+
+        // Получение куки
+        const cookies = await page.cookies();
+        console.log('Получены куки:', cookies.map(c => `${c.name}=${c.value}`).join('; '));
 
         // Выполнение запроса к API
         console.log('Запрашиваю API Truth Social...');
@@ -121,11 +116,11 @@ async function getPosts() {
                     headers: {
                         'Accept': 'application/json',
                         'User-Agent': navigator.userAgent
-                    }
+                    },
+                    credentials: 'include' // Передача куки
                 });
-                const json = response.ok ? await response.json() : [];
                 console.log('API ответ:', response.status, response.statusText);
-                return json;
+                return response.ok ? await response.json() : [];
             } catch (error) {
                 console.error('Ошибка fetch в evaluate:', error);
                 return [];
