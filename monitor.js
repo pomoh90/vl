@@ -46,7 +46,6 @@ async function saveSubscribers() {
 async function clearPuppeteerCache() {
     try {
         await fs.rm(PUPPETEER_CACHE_DIR, { recursive: true, force: true });
-        console.log(`Удалена папка: ${PUPPETEER_CACHE_DIR}`);
     } catch (error) {
         console.error('Ошибка при очистке кэша Puppeteer:', error);
         // Проверка, осталась ли директория
