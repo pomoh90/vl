@@ -1,6 +1,4 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
+const puppeteer = require('puppeteer');
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs').promises;
 const path = require('path');
@@ -100,8 +98,9 @@ async function getPosts() {
         });
 
         const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
         console.log('Перехожу на Truth Social...');
-        await page.goto('https://truthsocial.com', { waitUntil: 'networkidle2', timeout: 15000 });
+        await page.goto('https://truthsocial.com', { waitUntil: 'networkidle2', timeout: 60000 });
 
         // Получение куки
         const cookies = await page.cookies();
@@ -117,7 +116,7 @@ async function getPosts() {
                         'Accept': 'application/json',
                         'User-Agent': navigator.userAgent
                     },
-                    credentials: 'include' // Передача куки
+                    credentials: 'include' // Передача куки для Cloudflare
                 });
                 console.log('API ответ:', response.status, response.statusText);
                 return response.ok ? await response.json() : [];
@@ -187,33 +186,3 @@ setInterval(getPosts, 10000);
 
 // Выполнение запроса при старте
 getPosts();
-
-// Настройка HTTP-сервера для Webhook
-const http = require('http');
-const server = http.createServer((req, res) => {
-    if (req.url === `/bot/${TOKEN}` && req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-        req.on('end', () => {
-            try {
-                const update = JSON.parse(body);
-                bot.processUpdate(update);
-                res.writeHead(200);
-                res.end('OK');
-            } catch (error) {
-                console.error('Ошибка обработки Webhook:', error);
-                res.writeHead(500);
-                res.end('Error');
-            }
-        });
-    } else {
-        res.writeHead(404);
-        res.end('Not found');
-    }
-});
-
-server.listen(3004, '0.0.0.0', () => {
-    console.log('Webhook-сервер запущен на порту 3004');
-});
