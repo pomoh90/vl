@@ -25,7 +25,6 @@ async function loadSubscribers() {
     try {
         const data = await fs.readFile(SUBSCRIBERS_FILE, 'utf8');
         subscribers = JSON.parse(data);
-        console.log('Подписчики загружены:', subscribers);
     } catch (error) {
         if (error.code !== 'ENOENT') {
             console.error('Ошибка при загрузке подписчиков:', error);
@@ -38,7 +37,6 @@ async function loadSubscribers() {
 async function saveSubscribers() {
     try {
         await fs.writeFile(SUBSCRIBERS_FILE, JSON.stringify(subscribers, null, 2));
-        console.log('Подписчики сохранены:', subscribers);
     } catch (error) {
         console.error('Ошибка при сохранении подписчиков:', error);
     }
@@ -48,9 +46,16 @@ async function saveSubscribers() {
 async function clearPuppeteerCache() {
     try {
         await fs.rm(PUPPETEER_CACHE_DIR, { recursive: true, force: true });
-        console.log('Кэш Puppeteer очищен');
+        console.log(`Удалена папка: ${PUPPETEER_CACHE_DIR}`);
     } catch (error) {
         console.error('Ошибка при очистке кэша Puppeteer:', error);
+        // Проверка, осталась ли директория
+        try {
+            await fs.access(PUPPETEER_CACHE_DIR);
+            console.error(`Директория ${PUPPETEER_CACHE_DIR} всё ещё существует после попытки удаления`);
+        } catch {
+            // Директория не существует, всё ок
+        }
     }
 }
 
@@ -61,10 +66,8 @@ bot.onText(/\/start/, async (msg) => {
         subscribers.push(chatId);
         await saveSubscribers();
         await bot.sendMessage(chatId, 'Вы подписались на обновления!');
-        console.log(`Новый подписчик: ${chatId}`);
     } else {
         await bot.sendMessage(chatId, 'Вы уже подписаны!');
-        console.log(`Подписчик уже существует: ${chatId}`);
     }
 });
 
@@ -74,7 +77,6 @@ bot.onText(/\/stop/, async (msg) => {
     subscribers = subscribers.filter(id => id !== chatId);
     await saveSubscribers();
     await bot.sendMessage(chatId, 'Вы отписались от обновлений.');
-    console.log(`Подписчик отписался: ${chatId}`);
 });
 
 // Получение постов
@@ -84,30 +86,25 @@ async function getPosts() {
         // Загрузка подписчиков
         await loadSubscribers();
         if (subscribers.length === 0) {
-            console.log('Нет подписчиков для отправки постов.');
             return;
         }
 
         // Запуск Puppeteer
-        console.log('Запускаю Puppeteer...');
         browser = await puppeteer.launch({
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
             userDataDir: PUPPETEER_CACHE_DIR,
-            executablePath: '/usr/bin/chromium-browser' // Подтверждённый путь
+            executablePath: '/usr/bin/chromium-browser'
         });
 
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-        console.log('Перехожу на Truth Social...');
         await page.goto('https://truthsocial.com', { waitUntil: 'networkidle2', timeout: 60000 });
 
         // Получение куки
-        const cookies = await page.cookies();
-        console.log('Получены куки:', cookies.map(c => `${c.name}=${c.value}`).join('; '));
+        await page.cookies();
 
         // Выполнение запроса к API
-        console.log('Запрашиваю API Truth Social...');
         const posts = await page.evaluate(async (apiUrl) => {
             try {
                 const response = await fetch(apiUrl, {
@@ -116,26 +113,21 @@ async function getPosts() {
                         'Accept': 'application/json',
                         'User-Agent': navigator.userAgent
                     },
-                    credentials: 'include' // Передача куки для Cloudflare
+                    credentials: 'include'
                 });
-                console.log('API ответ:', response.status, response.statusText);
                 return response.ok ? await response.json() : [];
             } catch (error) {
-                console.error('Ошибка fetch в evaluate:', error);
                 return [];
             }
         }, API_URL);
 
-        console.log('Получены посты:', posts.length);
         const latestPost = posts[0];
         if (latestPost && latestPost.id !== lastPostId) {
-            console.log('Новый пост найден:', latestPost.id);
             // Отправка поста с картинкой
             if (latestPost.media_attachments && latestPost.media_attachments.some(media => media.type === 'image')) {
                 const imageUrl = latestPost.media_attachments[0].url;
                 const imageMessage = `${stripHtmlTags(latestPost.content)}\n\nСсылка на пост: ${latestPost.url}`;
                 for (const chatId of subscribers) {
-                    console.log(`Отправляю фото в чат ${chatId}`);
                     await bot.sendPhoto(chatId, imageUrl, { caption: imageMessage }).catch(err => {
                         console.error(`Ошибка отправки фото в чат ${chatId}:`, err);
                     });
@@ -147,7 +139,6 @@ async function getPosts() {
                 const videoUrl = latestPost.media_attachments[0].url;
                 const videoMessage = `${stripHtmlTags(latestPost.content)}\n\nСсылка на пост: ${latestPost.url}`;
                 for (const chatId of subscribers) {
-                    console.log(`Отправляю видео в чат ${chatId}`);
                     await bot.sendVideo(chatId, videoUrl, { caption: videoMessage }).catch(err => {
                         console.error(`Ошибка отправки видео в чат ${chatId}:`, err);
                     });
@@ -158,7 +149,6 @@ async function getPosts() {
             if (!latestPost.media_attachments || latestPost.media_attachments.length === 0) {
                 const textMessage = `${stripHtmlTags(latestPost.content)}\n\nСсылка на пост: ${latestPost.url}`;
                 for (const chatId of subscribers) {
-                    console.log(`Отправляю текст в чат ${chatId}`);
                     await bot.sendMessage(chatId, textMessage).catch(err => {
                         console.error(`Ошибка отправки текста в чат ${chatId}:`, err);
                     });
@@ -166,15 +156,12 @@ async function getPosts() {
             }
 
             lastPostId = latestPost.id;
-        } else {
-            console.log('Новых постов нет.');
         }
 
     } catch (error) {
         console.error('Ошибка при получении постов:', error);
     } finally {
         if (browser) {
-            console.log('Закрываю браузер...');
             await browser.close();
             await clearPuppeteerCache();
         }
