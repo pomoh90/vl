@@ -12,6 +12,13 @@ const PUPPETEER_CACHE_DIR = path.join(__dirname, '.puppeteer_cache');
 let lastPostId = null; // Хранит ID последнего отправленного поста
 let subscribers = []; // Список ID подписчиков
 
+// Список User-Agent для ротации
+const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36'
+];
+
 // Инициализация Telegram-бота с Webhook
 const bot = new TelegramBot(TOKEN);
 bot.setWebHook(`http://145.223.100.36:3004/bot/${TOKEN}`);
@@ -95,13 +102,15 @@ async function getPosts() {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
             userDataDir: PUPPETEER_CACHE_DIR,
-            executablePath: '/usr/bin/chromium-browser' // Подтверждённый путь к Chromium
+            executablePath: '/usr/bin/chromium-browser' // Подтверждённый путь
         });
 
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+        const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+        await page.setUserAgent(randomUserAgent);
+        console.log('Использую User-Agent:', randomUserAgent);
         console.log('Перехожу на Truth Social...');
-        await page.goto('https://truthsocial.com', { waitUntil: 'networkidle2' });
+        await page.goto('https://truthsocial.com', { waitUntil: 'networkidle2', timeout: 15000 });
 
         // Выполнение запроса к API
         console.log('Запрашиваю API Truth Social...');
@@ -111,10 +120,12 @@ async function getPosts() {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        'User-Agent': navigator.userAgent
                     }
                 });
-                return response.ok ? await response.json() : [];
+                const json = response.ok ? await response.json() : [];
+                console.log('API ответ:', response.status, response.statusText);
+                return json;
             } catch (error) {
                 console.error('Ошибка fetch в evaluate:', error);
                 return [];
